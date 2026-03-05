@@ -1,7 +1,7 @@
 function SearchBar({searchedAnime, setSearchedAnime}) {
     console.log(searchedAnime);
     return (
-    <div className="search-anime-container">
+    <div className="search-anime-component">
         <input 
         type="text" 
         placeholder="Search Anime (Ex. Boku No Pico)"
