@@ -14,6 +14,7 @@ function HomeScreen() {
   const [deleteAnime, setDeleteAnime] = useState(null);
   const [animeList, setAnimeList] = useState([]);
   const [selectedAnime, setSelectedAnime] = useState(null);
+  const [statusFilter, setStatusFilter] = useState('All');
  
   useEffect(() => {
     fetchAnimeList();
@@ -44,11 +45,31 @@ function HomeScreen() {
     setShowAddModal(true);
   }
 
+  const filteredAnimeList = statusFilter === 'All' 
+    ? animeList 
+    : animeList.filter(anime => anime.status === statusFilter);
+
   return (
     <main className="home-screen">
       <Header content="MyAnimeOpinions" />
       <SearchAnime onAnimeClick={handleAnimeSelect}/>
-      <AnimeList animeList={animeList} onEdit={handleEdit} onDelete={handleDelete} />
+      
+      <div className="filter-container" style={{ margin: '20px 0', padding: '10px' }}>
+        <label htmlFor="status-filter" style={{ marginRight: '10px' }}>Filter by Status:</label>
+        <select 
+          id="status-filter" 
+          value={statusFilter} 
+          onChange={(e) => setStatusFilter(e.target.value)}
+          style={{ padding: '5px 10px', borderRadius: '4px', border: '1px solid #ccc' }}
+        >
+          <option value="All">All</option>
+          <option value="Watching">Watching</option>
+          <option value="Completed">Completed</option>
+          <option value="Dropped">Dropped</option>
+        </select>
+      </div>
+      
+      <AnimeList animeList={filteredAnimeList} onEdit={handleEdit} onDelete={handleDelete} />
       <AddAnimeModal
         isVisible={showAddModal}
         onClose={() => {
