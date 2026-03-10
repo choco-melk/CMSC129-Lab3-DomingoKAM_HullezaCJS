@@ -1,7 +1,7 @@
 import express from "express";
 import getAllAnimes from "../controllers/FetchUserAnimesController.js";
 
-const userAnimeRouter = express.Router();
-userAnimeRouter.get("/anime-list", getAllAnimes);
+const fetchUserAnimeRouter = express.Router();
+fetchUserAnimeRouter.get("/anime-list", getAllAnimes);
 
-export default userAnimeRouter;
+export default fetchUserAnimeRouter;
