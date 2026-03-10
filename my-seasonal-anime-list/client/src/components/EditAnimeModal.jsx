@@ -63,8 +63,7 @@ function EditAnimeModal({ isVisible = true, onClose, anime, onEditSuccess }) {
             <FontAwesomeIcon icon={faXmark} className="modal-close-icon" onClick={onCloseButtonClick}/>
             <form onSubmit={handleSubmit(onSubmit)}>
                 <div className="form-element">
-                    <label htmlFor="title-input">Title</label>
-                    <input type="text" id="title-input" {...register("title")} placeholder="Anime Title"/>
+                    <label htmlFor="title-input">Title: {anime.title}</label>
                 </div>
                 <div className="form-element">
                     <label htmlFor="watched-checkbox">Watched</label>

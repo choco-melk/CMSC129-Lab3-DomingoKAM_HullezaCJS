@@ -4,6 +4,7 @@ import EditAnimeModal from "../components/EditAnimeModal";
 import DeleteAnimeModal from "../components/DeleteAnimeModal";
 import AnimeList from "../components/AnimeList";
 import Header from "../components/ui/header/Header";
+import SearchAnime from '../components/SearchAnime';
 
 function HomeScreen() {
   const [showAddModal, setShowAddModal] = useState(false);
@@ -12,6 +13,7 @@ function HomeScreen() {
   const [editAnime, setEditAnime] = useState(null);
   const [deleteAnime, setDeleteAnime] = useState(null);
   const [animeList, setAnimeList] = useState([]);
+  const [selectedAnime, setSelectedAnime] = useState(null);
  
   useEffect(() => {
     fetchAnimeList();
@@ -37,17 +39,24 @@ function HomeScreen() {
     setShowDeleteModal(true);
   }
 
+  function handleAnimeSelect(anime) {
+    setSelectedAnime(anime);
+    setShowAddModal(true);
+  }
+
   return (
     <main className="home-screen">
       <Header content="MyAnimeOpinions" />
+      <SearchAnime onAnimeClick={handleAnimeSelect}/>
       <AnimeList animeList={animeList} onEdit={handleEdit} onDelete={handleDelete} />
-      <button className="add-anime-button" onClick={() => setShowAddModal(true)}>
-        Add Anime
-      </button>
       <AddAnimeModal
         isVisible={showAddModal}
-        onClose={() => setShowAddModal(false)}
+        onClose={() => {
+          setShowAddModal(false);
+          setSelectedAnime(null);
+        }}
         onAddSuccess={fetchAnimeList}
+        selectedAnime={selectedAnime}
       />
       <EditAnimeModal
         isVisible={showEditModal}

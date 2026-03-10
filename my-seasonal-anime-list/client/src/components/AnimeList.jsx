@@ -14,7 +14,6 @@ function AnimeList({ animeList, onEdit, onDelete }) {
                 </tr>
             </thead>
             <tbody>
-
                 {
                     (animeList) ?
                     animeList.map((anime) => (

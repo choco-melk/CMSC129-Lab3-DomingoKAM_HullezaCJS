@@ -1,17 +1,26 @@
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { faXmark } from '@fortawesome/free-solid-svg-icons'
 import { useForm } from 'react-hook-form'
+import { useEffect } from 'react'
 import Modal from "./ui/modal/Modal"
 
-function AddAnimeModal({ isVisible = true, onClose, onAddSuccess }) {
-    const { register, handleSubmit, reset } = useForm()
+function AddAnimeModal({ isVisible = true, onClose, onAddSuccess, selectedAnime }) {
+    const { register, handleSubmit, reset, setValue } = useForm()
+
+    useEffect(() => {
+        if (selectedAnime) {
+            setValue('title', selectedAnime.title || '');
+        } else {
+            reset();
+        }
+    }, [selectedAnime, setValue, reset]);
 
     // submits added anime to server to be added in db
     async function onSubmit(data) {
         const anime = {
             "title": data.title,
             "watched": data.watched || false,
-            "currentEp": data.currentEpisode || 0,
+            "currentEp": data.currentEpisode || 1,
             "status": data.status,
             "rating": data.rating || 0,
             "op": data.op || false,
@@ -43,13 +52,12 @@ function AddAnimeModal({ isVisible = true, onClose, onAddSuccess }) {
             <FontAwesomeIcon icon={faXmark} className="modal-close-icon" onClick={onClose}/>
             <form onSubmit={handleSubmit(onSubmit)}>
                 <div className="form-element">
-                    <label htmlFor="title-input">Title</label>
-                    <input type="text" id="title-input" {...register("title")} placeholder="Anime Title"/>
+                    <label htmlFor="title-input">Title: {selectedAnime.title}</label>
                 </div>
                 <div className="form-element">
                     <label htmlFor="watched-checkbox">Watched</label>
                     <input type="checkbox" id="watched-checkbox" {...register("watched")}/>
-                </div>
+                </div><div className=""></div>
                 <div className="form-element">
                     <label htmlFor="current-episode-input">Current Episode</label>
                     <input type="text" id="current-episode-input" {...register("currentEpisode")} placeholder="Current Episode"/>
