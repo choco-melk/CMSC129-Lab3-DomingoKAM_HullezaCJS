@@ -30,7 +30,7 @@ function AnimeList({ animeList, onEdit, onDelete }) {
                                 <button className="btn btn-danger" onClick={() => onDelete(anime)}>Delete</button>
                             </td>
                         </tr>
-                    )) : <tr><td colSpan="9">No animes found</td></tr>
+                    )) : <tr><td colSpan="8" style={{ textAlign: 'center', padding: '40px', color: '#666', fontSize: '16px', fontStyle: 'italic' }}>No anime in your list yet. Search and add some anime!</td></tr>
                 } 
             </tbody>
         </table>

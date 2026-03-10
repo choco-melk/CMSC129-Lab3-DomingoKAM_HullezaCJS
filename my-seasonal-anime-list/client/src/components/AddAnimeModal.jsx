@@ -4,7 +4,7 @@ import { useForm } from 'react-hook-form'
 import { useEffect } from 'react'
 import Modal from "./ui/modal/Modal"
 
-function AddAnimeModal({ isVisible = true, onClose, onAddSuccess, selectedAnime }) {
+function AddAnimeModal({ isVisible = true, onClose, onAddSuccess, selectedAnime, animeList = [], showToast }) {
     const { register, handleSubmit, reset, setValue } = useForm()
 
     useEffect(() => {
@@ -17,8 +17,15 @@ function AddAnimeModal({ isVisible = true, onClose, onAddSuccess, selectedAnime 
 
     // submits added anime to server to be added in db
     async function onSubmit(data) {
+        const title = data.title?.trim();
+        // check duplicate
+        if (title && animeList.some(a => a.title.toLowerCase() === title.toLowerCase())) {
+            if (showToast) showToast(`"${title}" is already in your list`);
+            return;
+        }
+
         const anime = {
-            "title": data.title,
+            "title": title,
             "watched": data.watched || false,
             "currentEp": data.currentEpisode || 1,
             "status": data.status,
@@ -38,7 +45,7 @@ function AddAnimeModal({ isVisible = true, onClose, onAddSuccess, selectedAnime 
         if (response.ok && result.success) {
             reset();
             onClose();
-            onAddSuccess();
+            onAddSuccess(result.anime); // pass newly created anime back
         } else {
             alert('Failed to add anime: ' + (result.message || response.statusText));
         }

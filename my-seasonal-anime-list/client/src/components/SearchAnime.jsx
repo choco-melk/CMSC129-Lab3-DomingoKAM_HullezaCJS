@@ -84,6 +84,19 @@ function SearchAnime({ onAnimeClick }) {
                 />
             </div>
             <div className="search-results-container">
+                {animeList.length === 0 && !isLoadingRef.current && (
+                    <div style={{ 
+                        padding: '40px', 
+                        textAlign: 'center', 
+                        color: '#666',
+                        fontSize: '16px',
+                        fontStyle: 'italic'
+                    }}>
+                        {searchedAnime.trim().length >= 3 
+                            ? "No anime found matching your search." 
+                            : ""}
+                    </div>
+                )}
                 {animeList.map((anime, index) => {
                     const isLast = index === animeList.length - 1;
                     return (

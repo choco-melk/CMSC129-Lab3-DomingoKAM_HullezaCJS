@@ -43,10 +43,9 @@ function EditAnimeModal({ isVisible = true, onClose, anime, onEditSuccess }) {
 
         const result = await response.json();
         if (response.ok && result.success) {
-            alert('Anime updated successfully');
             reset();
             onClose();
-            onEditSuccess();
+            onEditSuccess(result.anime); // pass updated anime to parent
         } else {
             alert('Failed to update anime: ' + (result.message || response.statusText));
         }
