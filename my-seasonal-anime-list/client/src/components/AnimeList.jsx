@@ -15,7 +15,7 @@ function AnimeList({ animeList, onEdit, onDelete }) {
             </thead>
             <tbody>
                 {
-                    (animeList) ?
+                    (animeList && animeList.length > 0) ?
                     animeList.map((anime) => (
                         <tr key={anime._id} className="anime-row">
                             <td className="label">{anime.title}</td>

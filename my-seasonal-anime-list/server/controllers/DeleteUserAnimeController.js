@@ -1,7 +1,9 @@
-import UserAnimeModel from "../models/UserAnimeModel.js";
+import userAnimeSchema from "../models/UserAnimeModel.js";
+import { activeConn, syncToBackup } from "../config/database.js";
 
 async function deleteUserAnime(req, res) {
     try {
+        const UserAnimeModel = activeConn.model('UserAnime', userAnimeSchema);
         const { id } = req.params;
 
         const deletedAnime = await UserAnimeModel.findByIdAndDelete(id);
@@ -11,6 +13,9 @@ async function deleteUserAnime(req, res) {
         }
 
         console.log("Anime deleted successfully:", deletedAnime);
+
+        // Sync to backup after successful delete
+        syncToBackup().catch(error => console.error('Sync to backup failed:', error));
 
         res.status(200).json({
             success: true,

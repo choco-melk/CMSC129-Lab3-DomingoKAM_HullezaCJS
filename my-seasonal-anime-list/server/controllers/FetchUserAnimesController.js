@@ -1,7 +1,9 @@
-import UserAnimeModel from "../models/UserAnimeModel.js";
+import userAnimeSchema from "../models/UserAnimeModel.js";
+import { activeConn } from "../config/database.js";
 
 async function getAllAnimes(req, res) {
-    try { 
+    try {
+        const UserAnimeModel = activeConn.model('UserAnime', userAnimeSchema);
         const animes = await UserAnimeModel.find();
         if (animes.length === 0) {
             return res.status(404).json({message: "No animes found"});

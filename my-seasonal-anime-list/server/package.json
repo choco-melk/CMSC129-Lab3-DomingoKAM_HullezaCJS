@@ -7,12 +7,14 @@
   "type": "module",
   "main": "index.js",
   "scripts": {
-    "start": "nodemon --env-file=.env server.js"
+    "start": "nodemon --env-file=.env server.js",
+    "backup": "mongodump --uri=\"$MONGODB_URI\" --out=./backup && mongorestore --uri=\"$BACKUP_MONGODB_URI\" ./backup --drop"
   },
   "dependencies": {
     "cors": "^2.8.6",
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
+    "mongodb": "^7.1.0",
     "mongoose": "^9.2.4",
     "nodemon": "^3.1.14"
   }

@@ -1,4 +1,4 @@
-import { Schema, model } from "mongoose";
+import { Schema } from "mongoose";
 
 const userAnimeSchema = new Schema({
     title: {type: String, required: true},
@@ -9,5 +9,5 @@ const userAnimeSchema = new Schema({
     op: {type: Boolean, required: true},
     ed: {type: Boolean, required: true}
 });
-const UserAnimeModel = model("userAnime", userAnimeSchema);
-export default UserAnimeModel;
+
+export default userAnimeSchema;

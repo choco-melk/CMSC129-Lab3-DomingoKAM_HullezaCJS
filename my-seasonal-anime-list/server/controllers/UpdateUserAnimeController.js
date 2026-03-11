@@ -1,7 +1,9 @@
-import UserAnimeModel from "../models/UserAnimeModel.js";
+import userAnimeSchema from "../models/UserAnimeModel.js";
+import { activeConn, syncToBackup } from "../config/database.js";
 
 async function updateUserAnime(req, res) {
     try {
+        const UserAnimeModel = activeConn.model('UserAnime', userAnimeSchema);
         const { id } = req.params;
         const { title, watched, currentEp, status, rating, op, ed } = req.body;
 
@@ -47,6 +49,9 @@ async function updateUserAnime(req, res) {
         }
 
         console.log("Anime updated successfully:", updatedAnime);
+
+        // Sync to backup after successful update
+        syncToBackup().catch(error => console.error('Sync to backup failed:', error));
 
         res.status(200).json({
             success: true,
