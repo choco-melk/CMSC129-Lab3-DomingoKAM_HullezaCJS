@@ -79,3 +79,12 @@
 .btn-danger:hover {
     background-color: rgb(220, 80, 80);
 }
+
+.col-title   { width: 25%; }
+.col-watched { width: 8%; }
+.col-episode { width: 14%; }
+.col-status  { width: 11%; }
+.col-rating  { width: 8%; }
+.col-op      { width: 6%; }
+.col-ed      { width: 6%; }
+.col-actions { width: 12%; }

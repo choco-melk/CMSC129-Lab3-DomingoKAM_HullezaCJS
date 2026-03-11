@@ -59,7 +59,7 @@ function AddAnimeModal({ isVisible = true, onClose, onAddSuccess, selectedAnime,
             <FontAwesomeIcon icon={faXmark} className="modal-close-icon" onClick={onClose}/>
             <form onSubmit={handleSubmit(onSubmit)}>
                 <div className="form-element">
-                    <label htmlFor="title-input">Title: {selectedAnime.title}</label>
+                    <label htmlFor="title-input">{selectedAnime.title}</label>
                 </div>
                 <div className="form-element">
                     <label htmlFor="watched-checkbox">Watched</label>
