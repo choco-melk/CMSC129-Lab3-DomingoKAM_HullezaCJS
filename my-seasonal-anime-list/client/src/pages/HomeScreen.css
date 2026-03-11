@@ -14,7 +14,7 @@
 }
 
 .search-section {
-    flex: 0 0 400px;
+    flex: 0 0 300px;
     overflow: hidden; 
     -ms-overflow-style: none;
     scrollbar-width: none;

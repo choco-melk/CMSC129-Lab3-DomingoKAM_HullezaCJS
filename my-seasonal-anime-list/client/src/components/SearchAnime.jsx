@@ -86,10 +86,10 @@ function SearchAnime({ onAnimeClick }) {
             <div className="search-results-container">
                 {animeList.length === 0 && !isLoadingRef.current && (
                     <div style={{ 
-                        padding: '40px', 
+                        padding: '32px', 
                         textAlign: 'center', 
                         color: '#666',
-                        fontSize: '16px',
+                        fontSize: '12px',
                         fontStyle: 'italic'
                     }}>
                         {searchedAnime.trim().length >= 3 

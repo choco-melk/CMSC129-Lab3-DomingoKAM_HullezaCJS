@@ -15,7 +15,7 @@
 .search-bar input {
     width: 100%;
     box-sizing: border-box;
-    padding: 0.5em 1em;
+    padding: 0.25em 0.5em;
     border-radius: 4px;
     font-size: 1.1em;
     font-family: 'Verdana', sans-serif;

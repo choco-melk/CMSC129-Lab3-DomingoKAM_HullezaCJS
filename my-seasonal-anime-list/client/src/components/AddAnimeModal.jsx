@@ -67,7 +67,7 @@ function AddAnimeModal({ isVisible = true, onClose, onAddSuccess, selectedAnime,
                 </div><div className=""></div>
                 <div className="form-element">
                     <label htmlFor="current-episode-input">Current Episode</label>
-                    <input type="text" id="current-episode-input" {...register("currentEpisode")} placeholder="Current Episode"/>
+                    <input type="number" id="current-episode-input" {...register("currentEpisode")} placeholder="Current Episode" min="1" step="1"/>
                 </div>
                 <div className="form-element">
                     <label htmlFor="status-select">Status: </label>
@@ -79,7 +79,7 @@ function AddAnimeModal({ isVisible = true, onClose, onAddSuccess, selectedAnime,
                 </div>
                 <div className="form-element">
                     <label htmlFor="rating-input">Rating: </label>
-                    <input type="number" id="rating-input" {...register("rating")} min="0" max="10" step="0.1"/>
+                    <input type="number" id="rating-input" {...register("rating")} min="0" max="10" step="1"/>
                 </div>
                 <div className="form-element">
                     <label htmlFor="op-checkbox">OP</label>
