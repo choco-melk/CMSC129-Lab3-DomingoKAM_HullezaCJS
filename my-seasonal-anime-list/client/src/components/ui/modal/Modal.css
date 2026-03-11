@@ -45,6 +45,7 @@
     font-size: 0.85rem;
     text-transform: uppercase;
     letter-spacing: 0.05em;
+    gap: 0.5em;
 }
 
 .form-element:nth-child(odd) {
@@ -121,6 +122,21 @@
 
 .form-element button[type="submit"]:hover {
     background-color: rgb(60, 100, 190);
+}
+.form-element button[type="button"] {
+    width: 100%;
+    padding: 0.6em 1em;
+    background-color: white;
+    color: black;
+    border: none;
+    border-radius: 4px;
+    font-family: 'Verdana', sans-serif;
+    font-size: 0.85rem;
+    font-weight: 700;
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    transition: background-color 0.2s;
 }
 
 .form-element:first-child label {
