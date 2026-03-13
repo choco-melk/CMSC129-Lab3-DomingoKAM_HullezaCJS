@@ -20,29 +20,24 @@ https://api.jikan.moe/v4
 - Check the boxes if you either like the opening or ending.
 - Update the status if you're still watching, finished, or dropped it.
 
+# Installation and Usage
+Start at the my-seasonal-anime-list.
+1. Clone the repository, by opening a terminal and typing in:
+```
+git clone https://github.com/FakeThird/CMSC129-Lab1-DomingoKAM_HullezaCJS.git
+```
+2. Locate the repository and do the following steps:
+    - To open the server-side code. Have another terminal. Go to server and type "node server.js"
+    - To open the client-side code. Go to client and type "npm run dev" in a terminal.
+3. Open the link to the local hosting and enjoy the website.
 
-# Logical View Diagram
-
-
-# Module-Based + Layered Structure
-
-## High Level Structure
-
-
-
-## Logic and View Layer
-
-
-
-## Services Layer
-
-
-## Pages Folder Structure
-
-
-
-## Pages Folder Structure
-
+# API endpoints
+```
+Fetching Data from Server:  method=GET route=/api/anime-list
+Adding Data to DB:  method=POST route=/api/add-anime
+Update Data of an anime in DB: method=PUT route=/api/update-anime/:id
+Delete Data of an Anime in DB: method=DELETE route=/api/delete-anime/:id
+```
 
 # License and Credits
 
