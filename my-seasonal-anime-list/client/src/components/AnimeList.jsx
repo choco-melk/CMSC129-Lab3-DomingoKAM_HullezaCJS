@@ -1,9 +1,19 @@
 import './AnimeList.css'
 import { useState } from 'react'
 
+const MOCK_ANIME = [
+    { _id: '1', title: 'Sousou no Frieren', watched: true, currentEp: 28, status: 'Completed', rating: 10, op: true, ed: true },
+    { _id: '2', title: 'Fullmetal Alchemist: Brotherhood', watched: true, currentEp: 64, status: 'Completed', rating: 10, op: true, ed: false },
+    { _id: '3', title: 'Steins;Gate', watched: false, currentEp: 12, status: 'Watching', rating: 9, op: false, ed: true },
+    { _id: '4', title: 'Hunter x Hunter', watched: false, currentEp: 50, status: 'Watching', rating: 9, op: true, ed: false },
+    { _id: '5', title: 'Vinland Saga', watched: false, currentEp: 1, status: 'Dropped', rating: 7, op: false, ed: false },
+]
+
 function AnimeList({ animeList, onEdit, onDelete }) {
     const [editingId, setEditingId] = useState(null);
     const [editValues, setEditValues] = useState({});
+
+    const displayList = (animeList && animeList.length > 0) ? animeList : MOCK_ANIME;
 
     function handleEditClick(anime) {
         setEditingId(anime._id);
@@ -48,15 +58,12 @@ function AnimeList({ animeList, onEdit, onDelete }) {
                 </tr>
             </thead>
             <tbody>
-                {(animeList && animeList.length > 0) ?
-                    animeList.map((anime) => {
+                    {displayList.map((anime) => {
                         const isEditing = editingId === anime._id;
                         return (
                             <tr key={anime._id} className="anime-row">
                                 <td className="label col-title">
-                                    {isEditing
-                                        ? <input className="inline-input" type="text" value={editValues.title} onChange={e => handleChange('title', e.target.value)} />
-                                        : anime.title}
+                                    {anime.title}
                                 </td>
                                 <td className="label col-watched">
                                     <input type="checkbox"
@@ -110,9 +117,7 @@ function AnimeList({ animeList, onEdit, onDelete }) {
                                 </td>
                             </tr>
                         );
-                    })
-                    : <tr><td colSpan="8" className="empty-state">No anime in your list yet. Search and add some anime!</td></tr>
-                }
+                    })}            
             </tbody>
         </table>
     )

@@ -1,24 +1,28 @@
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { faXmark } from '@fortawesome/free-solid-svg-icons'
 import { useForm } from 'react-hook-form'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import Modal from "./ui/modal/Modal"
 
 function AddAnimeModal({ isVisible = true, onClose, onAddSuccess, selectedAnime, animeList = [], showToast }) {
     const { register, handleSubmit, reset, setValue } = useForm()
+    const [op, setOp] = useState(false);
+    const [ed, setEd] = useState(false);
 
     useEffect(() => {
         if (selectedAnime) {
             setValue('title', selectedAnime.title || '');
+            setOp(false);
+            setEd(false);
         } else {
             reset();
+            setOp(false);
+            setEd(false);
         }
     }, [selectedAnime, setValue, reset]);
 
-    // submits added anime to server to be added in db
     async function onSubmit(data) {
         const title = data.title?.trim();
-        // check duplicate
         if (title && animeList.some(a => a.title.toLowerCase() === title.toLowerCase())) {
             if (showToast) showToast(`"${title}" is already in your list`);
             return;
@@ -30,11 +34,10 @@ function AddAnimeModal({ isVisible = true, onClose, onAddSuccess, selectedAnime,
             "currentEp": data.currentEpisode || 1,
             "status": data.status,
             "rating": data.rating || 0,
-            "op": data.op || false,
-            "ed": data.ed || false
+            "op": op,
+            "ed": ed
         };
 
-        // calls the api endpoint that adds an anime to the db
         const response = await fetch('http://localhost:3000/api/add-anime', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -45,13 +48,11 @@ function AddAnimeModal({ isVisible = true, onClose, onAddSuccess, selectedAnime,
         if (response.ok && result.success) {
             reset();
             onClose();
-            onAddSuccess(result.anime); // pass newly created anime back
+            onAddSuccess(result.anime);
         } else {
             alert('Failed to add anime: ' + (result.message || response.statusText));
         }
     }
-
-    
 
     return (
         (isVisible) && 
@@ -64,13 +65,13 @@ function AddAnimeModal({ isVisible = true, onClose, onAddSuccess, selectedAnime,
                 <div className="form-element">
                     <label htmlFor="watched-checkbox">Watched</label>
                     <input type="checkbox" id="watched-checkbox" {...register("watched")}/>
-                </div><div className=""></div>
+                </div>
                 <div className="form-element">
                     <label htmlFor="current-episode-input">Current Episode</label>
                     <input type="number" id="current-episode-input" {...register("currentEpisode")} placeholder="Current Episode" min="1" step="1"/>
                 </div>
                 <div className="form-element">
-                    <label htmlFor="status-select">Status: </label>
+                    <label htmlFor="status-select">Status</label>
                     <select id="status-select" {...register("status")}>
                         <option value="Watching">Watching</option>
                         <option value="Completed">Completed</option>
@@ -78,16 +79,20 @@ function AddAnimeModal({ isVisible = true, onClose, onAddSuccess, selectedAnime,
                     </select>
                 </div>
                 <div className="form-element">
-                    <label htmlFor="rating-input">Rating: </label>
+                    <label htmlFor="rating-input">Rating</label>
                     <input type="number" id="rating-input" {...register("rating")} min="0" max="10" step="1"/>
                 </div>
                 <div className="form-element">
-                    <label htmlFor="op-checkbox">OP</label>
-                    <input type="checkbox" id="op-checkbox" {...register("op")}/>
+                    <label>OP</label>
+                    <span className={`heart-icon editable ${op ? 'filled' : ''}`} onClick={() => setOp(!op)}>
+                        {op ? '♥' : '♡'}
+                    </span>
                 </div>
                 <div className="form-element">
-                    <label htmlFor="ed-checkbox">ED</label>
-                    <input type="checkbox" id="ed-checkbox" {...register("ed")}/>
+                    <label>ED</label>
+                    <span className={`heart-icon editable ${ed ? 'filled' : ''}`} onClick={() => setEd(!ed)}>
+                        {ed ? '♥' : '♡'}
+                    </span>
                 </div>
                 <div className="form-element">
                     <button type="submit">Add Anime</button>
@@ -98,5 +103,3 @@ function AddAnimeModal({ isVisible = true, onClose, onAddSuccess, selectedAnime,
 }
 
 export default AddAnimeModal;
-
-

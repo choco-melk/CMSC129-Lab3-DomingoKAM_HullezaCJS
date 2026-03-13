@@ -100,7 +100,6 @@ function HomeScreen() {
             animeList={filteredAnimeList}
             onEdit={handleEdit}
             onDelete={handleDelete}
-            onToggle={handleToggle}
           />
         </div>
       </div>

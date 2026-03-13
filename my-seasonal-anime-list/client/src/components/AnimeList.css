@@ -93,9 +93,9 @@
 .col-episode { width: 11%; }
 .col-status  { width: 14%; }
 .col-rating  { width: 8%; }
-.col-op      { width: 6%; }
-.col-ed      { width: 6%; }
-.col-actions { width: 12%; }
+.col-op      { width: 4%; }
+.col-ed      { width: 4%; }
+.col-actions { width: 16%; }
 
 /* Inline editing */
 .inline-input {
