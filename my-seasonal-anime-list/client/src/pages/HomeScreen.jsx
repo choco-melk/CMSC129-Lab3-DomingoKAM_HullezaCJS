@@ -4,7 +4,8 @@ import DeleteAnimeModal from "../components/DeleteAnimeModal";
 import AnimeList from "../components/AnimeList";
 import Header from "../components/ui/header/Header";
 import SearchAnime from '../components/SearchAnime';
-import Toast from '../components/ui/toast/Toast';
+import Toast from '../components/ui/toast/Toast';   
+import AnimeBot from '../components/AnimeBot';
 import './HomeScreen.css'
 
 function HomeScreen() {
@@ -121,6 +122,7 @@ function HomeScreen() {
         anime={deleteAnime}
         onDeleteSuccess={handleDeleteSuccess}
       />
+      <AnimeBot onListUpdate={fetchAnimeList} />
     </main>
   );
 }
