@@ -7,6 +7,7 @@ import fetchUserAnimeRouter from "./routes/FetchUserAnimesRoute.js";
 import updateUserAnimeRouter from "./routes/UpdateUserAnimeRoute.js";
 import deleteUserAnimeRouter from "./routes/DeleteUserAnimeRoute.js";
 import backupRouter from "./routes/BackupRoute.js";
+import chatRouter from './routes/MALChatter.js';
 
 dotenv.config();    
 const app = express();
@@ -23,6 +24,7 @@ app.use("/api", fetchUserAnimeRouter);
 app.use("/api", updateUserAnimeRouter);
 app.use("/api", deleteUserAnimeRouter);
 app.use("/api", backupRouter);
+app.use('/api/chat', chatRouter);
 
 // Test route
 app.get("/api/test", (req, res) => res.json({ message: "Server is running" }));
