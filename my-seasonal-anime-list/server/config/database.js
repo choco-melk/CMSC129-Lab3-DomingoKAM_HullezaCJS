@@ -10,14 +10,7 @@ let connection;
 async function connectDB() {
     try {
         // Connect to MongoDB replica set
-        connection = await mongoose.connect(mongoUri, {
-            // Replica set options
-            replicaSet: 'rs0',
-            // Connection options
-            maxPoolSize: 10,
-            serverSelectionTimeoutMS: 5000,
-            socketTimeoutMS: 45000,
-        });
+        connection = await mongoose.connect(mongoUri);
 
         console.log(`Connected to MongoDB replica set: ${connection.connection.host}`);
         console.log(`Database: ${connection.connection.name}`);

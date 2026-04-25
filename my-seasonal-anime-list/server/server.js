@@ -17,6 +17,7 @@ app.use(cors());
 app.use(express.json());    
 
 // Routes
+app.get("/", (req, res) => res.send("Welcome to the server."));
 app.use("/api", addUserAnimeRouter);
 app.use("/api", fetchUserAnimeRouter);
 app.use("/api", updateUserAnimeRouter);
