@@ -5,7 +5,7 @@ import './AnimeBot.css';
 // ─── MASCOT CONFIG ───────────────────────────────────────────────
 // Drop your mascot image into your assets folder and update this path.
 // Set to null to use the fallback emoji/initial avatar instead.
-const MASCOT_IMAGE = null; // e.g. '/assets/mascot.png' or import mascotImg from '../assets/mascot.png'
+const MASCOT_IMAGE = "./assets/squid_girl.png"; 
 // ─────────────────────────────────────────────────────────────────
 
 const QUICK_PROMPTS = [
