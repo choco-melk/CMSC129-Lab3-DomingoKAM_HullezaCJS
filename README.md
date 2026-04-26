@@ -101,7 +101,6 @@ my-seasonal-anime-list/
 ### `server/.env`
 ```env
 MONGODB_URI=your-mongodb-connection-string
-BACKUP_MONGODB_URI=your-mongodb-connection-string
 VITE_GEMINI_API_KEY=your-gemini-api-key
 ```
 
@@ -151,7 +150,7 @@ npm install
 ```bash
 # in server/
 cp .env.example .env
-# fill in MONGODB_URI, BACKUP_MONGODB_URI, and VITE_GEMINI_API_KEY
+# fill in MONGODB_URI and VITE_GEMINI_API_KEY
 ```
 
 5. **Start the server**
