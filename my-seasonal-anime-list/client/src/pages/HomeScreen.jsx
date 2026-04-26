@@ -33,7 +33,7 @@ function HomeScreen() {
 
   async function handleEdit(updatedAnime) {
     const response = await fetch(`http://localhost:3000/api/update-anime/${updatedAnime._id}`, {
-      method: 'PUT',
+      method: 'PATCH', // was PUT, now PATCH
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(updatedAnime)
     });
