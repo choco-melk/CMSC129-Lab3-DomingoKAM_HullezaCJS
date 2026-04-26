@@ -22,6 +22,14 @@ function cycleToNextModel() {
   return MODELS[currentModelIndex];
 }
 
+// ✅ Safely extract parts from a Gemini response — prevents crashes when
+// candidates is undefined (e.g. after a long tool chain or empty response)
+function extractParts(response) {
+  const candidates = response?.candidates;
+  if (!candidates || candidates.length === 0) return [];
+  return candidates[0]?.content?.parts || [];
+}
+
 const SYSTEM_PROMPT = `
 
 CHARACTER:
@@ -91,11 +99,10 @@ The search results include multiple name fields: title, title_english, title_jap
 - Never skip search_anime, even if you think you know the anime.
 
 DUPLICATE PREVENTION (CRITICAL):
-- You will be given an "already_added_this_session" list at the start of tool responses.
+- You will be given an "already_added_this_session" list in tool responses.
 - Before calling add_anime for any title, check this list.
 - If the exact title (case-insensitive) is already in that list, SKIP it — do NOT call add_anime again.
 - This applies even if search_anime returns it again as a result for a different query.
-- Example: if you already added "Mob Psycho 100" while processing season 1, do NOT add it again when processing season 2's search results.
 
 MULTI-SEASON HANDLING:
 - If the user asks for multiple specific seasons of the same show (e.g. "season 1 and season 2"), 
@@ -112,8 +119,7 @@ FETCHING THE ANIME LIST:
   you MUST list EVERY single anime that matches — not just a count, not a summary.
   Format each entry clearly, for example:
   "1. Steins;Gate (Watching, ep 12)
-   2. Hunter x Hunter (Watching, ep 50)
-   3. Kaguya-sama (Watching, ep 1)"
+   2. Hunter x Hunter (Watching, ep 50)"
   Never say "you have X anime" without also listing all of them by name.
 - Never assume the list is empty or partial — always fetch it fresh.
 
@@ -140,7 +146,7 @@ const tools = {
     },
     {
       name: 'add_anime',
-      description: 'Add a new anime to the list. Only call this after search_anime confirms the title exists and it has not already been added this session.',
+      description: 'Add a new anime to the list. Only call this AFTER search_anime confirms the title exists. Never call this without calling search_anime first.',
       parameters: {
         type: 'object',
         properties: {
@@ -212,7 +218,6 @@ async function executeTool(name, args) {
     const res = await fetch(`${API_BASE}/anime-list`);
     const data = await res.json();
     let animes = data.animes || [];
-    // ✅ Only filter if status explicitly provided — always return full list otherwise
     if (args.status) {
       animes = animes.filter(a => a.status === args.status);
     }
@@ -291,7 +296,7 @@ function getErrorMessage(errorStr) {
   } else if (errorStr.includes('404') || errorStr.includes('not found') || errorStr.includes('MODEL_NOT_FOUND')) {
     return "Eeeeh?! ( ◐ o ◑ ) Something went wrong with my brain module! The AI model seems to be unavailable right now. Please tell my creator to check the model name! (＃Д´)";
   } else if (errorStr.includes('API_KEY_INVALID') || errorStr.includes('api key') || errorStr.includes('401')) {
-    return "Waaah~! ᕦ(ò_ó)ᕤ My connection key is invalid! Please check the Gemini API key setup. I can't do anything without it! (๑•́ ₃ •̀๑)";
+    return "Waaah~! ᕦ(ò_ó)ᕤ My connection key is invalid! Please check the Gemini API key setup. I can't do anything without it! (๑•́ ₃ •̀₃)";
   } else if (errorStr.includes('500') || errorStr.includes('503') || errorStr.includes('UNAVAILABLE')) {
     return "Oh nyo~! (°ロ°) ! The Gemini servers seem to be having a nap right now! Please try again in a little bit, I believe in you! (✿◠‿◠)";
   } else if (errorStr.includes('network') || errorStr.includes('fetch')) {
@@ -324,7 +329,6 @@ router.post('/', async (req, res) => {
     const id = sessionId || crypto.randomUUID();
     const history = sessions.get(id) || [];
 
-    // Strip function call/response turns from history
     const cleanHistory = history.filter(entry => {
       if (!entry.parts) return false;
       const hasFunctionCall = entry.parts.some(p => p.functionCall);
@@ -332,7 +336,6 @@ router.post('/', async (req, res) => {
       return !hasFunctionCall && !hasFunctionResponse;
     });
 
-    // Build a unified requestHistory used for all generateContent calls
     const requestHistory = [
       ...cleanHistory,
       { role: 'user', parts: [{ text: message }] }
@@ -347,33 +350,43 @@ router.post('/', async (req, res) => {
       });
 
       let currentResponse = currentResult.response;
-      let currentParts = currentResponse.candidates[0].content.parts;
+      let currentParts = extractParts(currentResponse);
       let functionCallPart = currentParts.find(p => p.functionCall);
 
       let finalText = '';
       const actionsPerformed = [];
 
-      // ✅ Track titles added this session to prevent duplicates
+      // ✅ Track what's been added and searched this request to prevent dupes
       const addedThisSession = new Set();
+      const searchedThisSession = new Set();
 
       while (functionCallPart) {
         const { name, args } = functionCallPart.functionCall;
         console.log(`Executing tool: ${name}`, args);
 
-        // ✅ Duplicate guard — skip add_anime if already added this session
+        // ✅ Hard backend guard: block add_anime if search_anime was never called first
         if (name === 'add_anime') {
           const normalizedTitle = args.title.toLowerCase().trim();
-          if (addedThisSession.has(normalizedTitle)) {
-            console.log(`Skipping duplicate add for: ${args.title}`);
 
-            // Inject a fake "already added" response so the model doesn't get confused
+          // Loose match — search query may differ slightly from final title
+          const wasSearched = [...searchedThisSession].some(q =>
+            q.includes(normalizedTitle) || normalizedTitle.includes(q)
+          );
+
+          if (!wasSearched) {
+            console.log(`Blocked add_anime for "${args.title}" — search_anime not called first`);
             requestHistory.push({ role: 'model', parts: currentParts });
             requestHistory.push({
               role: 'user',
               parts: [{
                 functionResponse: {
                   name,
-                  response: { output: { skipped: true, reason: `"${args.title}" was already added in this session. Do not add it again.` } }
+                  response: {
+                    output: {
+                      blocked: true,
+                      reason: `You must call search_anime for "${args.title}" before calling add_anime. Please search first to verify the anime exists.`
+                    }
+                  }
                 }
               }]
             });
@@ -383,11 +396,46 @@ router.post('/', async (req, res) => {
               tools: [tools]
             });
             currentResponse = nextResult.response;
-            currentParts = currentResponse.candidates[0].content.parts;
+            currentParts = extractParts(currentResponse);
             functionCallPart = currentParts.find(p => p.functionCall);
             continue;
           }
+
+          // ✅ Duplicate guard — skip if already added this session
+          if (addedThisSession.has(normalizedTitle)) {
+            console.log(`Skipping duplicate add for: ${args.title}`);
+            requestHistory.push({ role: 'model', parts: currentParts });
+            requestHistory.push({
+              role: 'user',
+              parts: [{
+                functionResponse: {
+                  name,
+                  response: {
+                    output: {
+                      skipped: true,
+                      reason: `"${args.title}" was already added in this session. Do not add it again.`
+                    }
+                  }
+                }
+              }]
+            });
+
+            const nextResult = await model.generateContent({
+              contents: requestHistory,
+              tools: [tools]
+            });
+            currentResponse = nextResult.response;
+            currentParts = extractParts(currentResponse);
+            functionCallPart = currentParts.find(p => p.functionCall);
+            continue;
+          }
+
           addedThisSession.add(normalizedTitle);
+        }
+
+        // ✅ Track all search_anime queries so add guard can verify them
+        if (name === 'search_anime') {
+          searchedThisSession.add(args.query.toLowerCase().trim());
         }
 
         const toolResult = await executeTool(name, args);
@@ -422,11 +470,12 @@ router.post('/', async (req, res) => {
         });
 
         currentResponse = nextResult.response;
-        currentParts = currentResponse.candidates[0].content.parts;
+        currentParts = extractParts(currentResponse);
         functionCallPart = currentParts.find(p => p.functionCall);
       }
 
-      // All tool calls done — generate the final summary response
+      // ✅ Skip synthesis for pure list fetches — the model's direct response
+      // already has access to the full anime data from requestHistory
       const onlyFetchedList = actionsPerformed.length > 0 &&
         actionsPerformed.every(a => a.tool === 'get_anime_list');
 
@@ -443,17 +492,18 @@ router.post('/', async (req, res) => {
           return a.tool;
         }).join(', ');
 
+        // Only pass the original user message — no tool turns — to avoid JSON leaking
         const synthesisContents = [
           { role: 'user', parts: [{ text: message }] }
         ];
 
         const synthesisInstruction = `${SYSTEM_PROMPT}
 
-      The following actions were ALL completed successfully: ${actionSummary}.
-      Summarize ALL of these completed actions in one enthusiastic in-character response.
-      Mention EVERY action that was done — not just one.
-      Do NOT include any JSON, tool responses, or technical data in your response.
-      Never return an empty response.`;
+The following actions were ALL completed successfully: ${actionSummary}.
+Summarize ALL of these completed actions in one enthusiastic in-character response.
+Mention EVERY action that was done — not just one.
+Do NOT include any JSON, tool responses, or technical data in your response.
+Never return an empty response.`;
 
         const summaryResponse = await model.generateContent({
           contents: synthesisContents,
@@ -462,8 +512,7 @@ router.post('/', async (req, res) => {
 
         finalText = summaryResponse.response.text();
       } else {
-        // ✅ For list fetches (and no-tool responses), use the model's direct response
-        // which has full access to the actual anime data from requestHistory
+        // For list fetches and no-tool responses, use model's direct response
         finalText = currentResponse.text();
       }
 
