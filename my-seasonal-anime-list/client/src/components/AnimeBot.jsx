@@ -86,10 +86,9 @@ function AnimeBot({ onListUpdate }) {
               </div>
             </div>
 
-            <div className="animebot-header-actions">
-              <button onClick={handleClear} title="Clear chat">🧹</button>
-              <button onClick={() => setIsOpen(false)} title="Close">✕</button>
-            </div>
+          <div className="animebot-header-actions">
+              <button onClick={handleClear} title="Clear chat">🧹 Clear</button>
+          </div>
           </div>
 
           {/* ── Messages ── */}

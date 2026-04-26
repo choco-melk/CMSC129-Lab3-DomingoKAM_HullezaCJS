@@ -140,19 +140,25 @@
 }
 
 .animebot-header-actions button {
-    background: none;
-    border: none;
-    color: rgba(255, 255, 255, 0.75);
+    background-color: rgba(255, 255, 255, 0.15);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: rgb(255, 255, 255);
     cursor: pointer;
-    font-size: 0.9rem;
-    padding: 0.3em 0.4em;
+    font-size: 0.75rem;
+    padding: 0.3em 0.65em;
     border-radius: 3px;
     line-height: 1;
-    transition: background-color 0.15s, color 0.15s;
+    font-family: 'Verdana', sans-serif;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    transition: background-color 0.15s, border-color 0.15s;
+    white-space: nowrap;
 }
 
 .animebot-header-actions button:hover {
-    background-color: rgba(255, 255, 255, 0.12);
+    background-color: rgba(220, 80, 80, 0.7);
+    border-color: rgba(220, 80, 80, 0.9);
     color: rgb(255, 255, 255);
 }
 

@@ -4,6 +4,24 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 const router = express.Router();
 const API_BASE = 'http://localhost:3000/api';
 
+const MODELS = [
+  'gemini-2.5-flash',
+  'gemini-2.5-flash-lite',
+  'gemini-2.5-pro',
+  'gemini-3-flash-preview'
+];
+let currentModelIndex = 3;
+
+function getCurrentModel() {
+  return MODELS[currentModelIndex];
+}
+
+function cycleToNextModel() {
+  currentModelIndex = (currentModelIndex + 1) % MODELS.length;
+  console.log(`Switching to model: ${MODELS[currentModelIndex]}`);
+  return MODELS[currentModelIndex];
+}
+
 const SYSTEM_PROMPT = `
 
 CHARACTER:
@@ -21,6 +39,13 @@ Happy/Excited: (✿◠‿◠), (ﾉ◕ヮ◕)ﾉ*:･ﾟ✧, (≧◡≦)
 Surprised: ( ◐ o ◑ ), (°ロ°) !
 Sad/Shy: (๑•́ ₃ •̀๑), (｡╯3╰｡)
 Determined/Angry: ᕦ(ò_ó)ᕤ, (＃Д´)
+
+BULK OPERATIONS (CRITICAL):
+When asked to add, update, or delete multiple items, you MUST call the appropriate 
+tool for EACH item one by one. Do NOT stop or summarize after just one tool call.
+After receiving each tool result, immediately call the next tool for the next item.
+Keep calling tools until every single item in the user's request has been processed.
+Only produce a final text response after ALL items have been handled.
 
 HANDLING MULTIPLE OPERATIONS (IMPORTANT):
 - When the user requests multiple operations, handle them ONE AT A TIME.
@@ -177,145 +202,182 @@ async function executeTool(name, args) {
   }
 }
 
+function getErrorMessage(errorStr) {
+  if (errorStr.includes('429') || errorStr.includes('quota') || errorStr.includes('rate') || errorStr.includes('RESOURCE_EXHAUSTED')) {
+    return "Uwaaah~! (๑•́ ₃ •̀๑) I've been talking too much and hit my limit! Please wait a moment and try again, senpai! I'll be back before you know it! ✨";
+  } else if (errorStr.includes('404') || errorStr.includes('not found') || errorStr.includes('MODEL_NOT_FOUND')) {
+    return "Eeeeh?! ( ◐ o ◑ ) Something went wrong with my brain module! The AI model seems to be unavailable right now. Please tell my creator to check the model name! (＃Д´)";
+  } else if (errorStr.includes('API_KEY_INVALID') || errorStr.includes('api key') || errorStr.includes('401')) {
+    return "Waaah~! ᕦ(ò_ó)ᕤ My connection key is invalid! Please check the Gemini API key setup. I can't do anything without it! (๑•́ ₃ •̀๑)";
+  } else if (errorStr.includes('500') || errorStr.includes('503') || errorStr.includes('UNAVAILABLE')) {
+    return "Oh nyo~! (°ロ°) ! The Gemini servers seem to be having a nap right now! Please try again in a little bit, I believe in you! (✿◠‿◠)";
+  } else if (errorStr.includes('network') || errorStr.includes('fetch')) {
+    return "Eeek~! (๑•́ ₃ •̀๑) I can't reach the internet right now! Please check your connection and try again, senpai! ✨";
+  }
+  return "Uwaaah~! Something went wrong that I didn't expect! (°ロ°) ! Please try again in a moment! (๑•́ ₃ •̀๑)";
+}
+
 const sessions = new Map();
 
 router.post('/', async (req, res) => {
   const { message, sessionId } = req.body;
   const apiKey = process.env.VITE_GEMINI_API_KEY;
-  const current_model = 'gemini-3-flash-preview';
 
   if (!apiKey) return res.status(400).json({ error: 'Missing Gemini API key' });
   if (!message) return res.status(400).json({ error: 'Missing message' });
 
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({
-    model: current_model,
-    systemInstruction: SYSTEM_PROMPT
-  });
+  const maxAttempts = MODELS.length;
+  let attempt = 0;
+  let lastError = null;
 
-  const id = sessionId || crypto.randomUUID();
-  const history = sessions.get(id) || [];
-
-  const cleanHistoryForChat = history.filter(entry => {
-    if (!entry.parts) return false;
-    const hasFunctionCall = entry.parts.some(p => p.functionCall);
-    const hasFunctionResponse = entry.parts.some(p => p.functionResponse);
-    return !hasFunctionCall && !hasFunctionResponse;
-  });
-
-  history.push({ role: 'user', parts: [{ text: message }] });
-
-  try {
-    const chat = model.startChat({
-      history: cleanHistoryForChat,
-      tools: [tools]
+  while (attempt < maxAttempts) {
+    const current_model = getCurrentModel();
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({
+      model: current_model,
+      systemInstruction: SYSTEM_PROMPT
     });
 
-    let currentResult = await chat.sendMessage(message);
-    let currentResponse = currentResult.response;
-    let currentParts = currentResponse.candidates[0].content.parts;
-    let functionCallPart = currentParts.find(p => p.functionCall);
+    const id = sessionId || crypto.randomUUID();
+    const history = sessions.get(id) || [];
 
-    let finalText = '';
-    const actionsPerformed = [];
+    // Strip function call/response turns from history for context
+    // (these confuse the model when replayed raw)
+    const cleanHistory = history.filter(entry => {
+      if (!entry.parts) return false;
+      const hasFunctionCall = entry.parts.some(p => p.functionCall);
+      const hasFunctionResponse = entry.parts.some(p => p.functionResponse);
+      return !hasFunctionCall && !hasFunctionResponse;
+    });
 
-    const requestHistory = [...cleanHistoryForChat, { role: 'user', parts: [{ text: message }] }];
+    // Build a unified requestHistory used for all generateContent calls
+    const requestHistory = [
+      ...cleanHistory,
+      { role: 'user', parts: [{ text: message }] }
+    ];
 
-    while (functionCallPart) {
-      const { name, args } = functionCallPart.functionCall;
-      const toolResult = await executeTool(name, args);
-      actionsPerformed.push({ tool: name, result: toolResult });
+    history.push({ role: 'user', parts: [{ text: message }] });
 
-      requestHistory.push({ role: 'model', parts: currentParts });
-      requestHistory.push({
-        role: 'user',
-        parts: [{
-          functionResponse: {
-            name,
-            response: { output: toolResult }
-          }
-        }]
-      });
-
-      const checkResponse = await model.generateContent({
+    try {
+      // ✅ Use generateContent directly from the start (no chat.sendMessage)
+      // This keeps requestHistory as the single source of truth for the whole loop
+      let currentResult = await model.generateContent({
         contents: requestHistory,
         tools: [tools]
       });
 
-      currentResponse = checkResponse.response;
-      currentParts = currentResponse.candidates[0].content.parts;
-      functionCallPart = currentParts.find(p => p.functionCall);
-    }
+      let currentResponse = currentResult.response;
+      let currentParts = currentResponse.candidates[0].content.parts;
+      let functionCallPart = currentParts.find(p => p.functionCall);
 
-    if (actionsPerformed.length > 0) {
-      const actionSummary = actionsPerformed.map(a => {
-        if (a.tool === 'add_anime') return `Added "${a.result?.anime?.title || 'anime'}"`;
-        if (a.tool === 'update_anime') return `Updated "${a.result?.anime?.title || 'anime'}"`;
-        if (a.tool === 'delete_anime') return `Deleted "${a.result?.anime?.title || 'anime'}"`;
-        if (a.tool === 'get_anime_list') return 'Fetched anime list';
-        return a.tool;
-      }).join(', ');
+      let finalText = '';
+      const actionsPerformed = [];
 
-      const synthesisInstruction = `${SYSTEM_PROMPT}
+      // ✅ Keep looping as long as the model wants to call a tool
+      // This is what allows bulk operations to work — each tool result
+      // is appended and the model is asked to continue until it stops
+      // returning function calls.
+      while (functionCallPart) {
+        const { name, args } = functionCallPart.functionCall;
+        console.log(`Executing tool: ${name}`, args);
+
+        const toolResult = await executeTool(name, args);
+        actionsPerformed.push({ tool: name, result: toolResult });
+
+        // Append model's function call turn and the tool result to history
+        requestHistory.push({ role: 'model', parts: currentParts });
+        requestHistory.push({
+          role: 'user',
+          parts: [{
+            functionResponse: {
+              name,
+              response: { output: toolResult }
+            }
+          }]
+        });
+
+        // Ask the model to continue — it will either call another tool
+        // (next item in a bulk request) or return a final text response
+        const nextResult = await model.generateContent({
+          contents: requestHistory,
+          tools: [tools]
+        });
+
+        currentResponse = nextResult.response;
+        currentParts = currentResponse.candidates[0].content.parts;
+        // Check if model wants to call another tool
+        functionCallPart = currentParts.find(p => p.functionCall);
+      }
+
+      // All tool calls done — now generate the final summary response
+      if (actionsPerformed.length > 0) {
+        const actionSummary = actionsPerformed.map(a => {
+          if (a.tool === 'add_anime') return `Added "${a.result?.anime?.title || 'anime'}"`;
+          if (a.tool === 'update_anime') return `Updated "${a.result?.anime?.title || 'anime'}"`;
+          if (a.tool === 'delete_anime') return `Deleted "${a.result?.anime?.title || 'anime'}"`;
+          if (a.tool === 'get_anime_list') return 'Fetched anime list';
+          return a.tool;
+        }).join(', ');
+
+        const synthesisInstruction = `${SYSTEM_PROMPT}
 
 The following actions were ALL completed successfully: ${actionSummary}.
 Summarize ALL of these completed actions in one enthusiastic in-character response.
 Mention EVERY action that was done — not just one.
 Never return an empty response.`;
 
-      const summaryResponse = await model.generateContent({
-        contents: requestHistory,
-        systemInstruction: { parts: [{ text: synthesisInstruction }] }
+        const summaryResponse = await model.generateContent({
+          contents: requestHistory,
+          systemInstruction: { parts: [{ text: synthesisInstruction }] }
+        });
+
+        finalText = summaryResponse.response.text();
+      } else {
+        finalText = currentResponse.text();
+      }
+
+      if (!finalText || finalText.trim() === '') {
+        finalText = actionsPerformed.length > 0
+          ? `Sugoi! ✨ I've completed all ${actionsPerformed.length} action(s) for you! (ﾉ◕ヮ◕)ﾉ*:･ﾟ✧`
+          : "Sorry, I can only help you manage your anime list. I can't help with that! (๑•́ ₃ •̀๑)";
+      }
+
+      history.push({ role: 'model', parts: [{ text: finalText }] });
+      if (history.length > 20) history.splice(0, history.length - 20);
+      sessions.set(id, history);
+
+      const writeTools = ['add_anime', 'update_anime', 'delete_anime'];
+      const hadWriteOperation = actionsPerformed.some(a => writeTools.includes(a.tool));
+
+      return res.json({
+        message: finalText,
+        sessionId: id,
+        action: hadWriteOperation ? actionsPerformed[0] : null
       });
 
-      finalText = summaryResponse.response.text();
-    } else {
-      finalText = currentResponse.text();
+    } catch (error) {
+      const errorStr = error.message || '';
+      const isQuotaError = errorStr.includes('429') || errorStr.includes('quota') ||
+                           errorStr.includes('rate') || errorStr.includes('RESOURCE_EXHAUSTED');
+
+      if (isQuotaError) {
+        cycleToNextModel();
+        attempt++;
+        lastError = error;
+        console.log(`Quota hit on ${current_model}, trying ${getCurrentModel()}...`);
+        continue;
+      }
+
+      console.error('Chat error:', error.message);
+      const userMessage = getErrorMessage(errorStr);
+      return res.status(500).json({ error: userMessage });
     }
-
-    if (!finalText || finalText.trim() === '') {
-      finalText = actionsPerformed.length > 0
-        ? `Sugoi! ✨ I've completed all ${actionsPerformed.length} action(s) for you! (ﾉ◕ヮ◕)ﾉ*:･ﾟ✧`
-        : "Sorry, I can only help you manage your anime list. I can't help with that! (๑•́ ₃ •̀๑)";
-    }
-
-    history.push({ role: 'model', parts: [{ text: finalText }] });
-
-    if (history.length > 20) history.splice(0, history.length - 20);
-    sessions.set(id, history);
-
-    const writeTools = ['add_anime', 'update_anime', 'delete_anime'];
-    const hadWriteOperation = actionsPerformed.some(a => writeTools.includes(a.tool));
-
-    res.json({
-      message: finalText,
-      sessionId: id,
-      action: hadWriteOperation ? actionsPerformed[0] : null
-    });
-
-  } catch (error) {
-    console.error('Chat error:', error.message);
-
-    // ✅ map specific Gemini errors to character-appropriate responses
-    const errorStr = error.message || '';
-    let userMessage = '';
-
-    if (errorStr.includes('429') || errorStr.includes('quota') || errorStr.includes('rate') || errorStr.includes('RESOURCE_EXHAUSTED')) {
-      userMessage = "Uwaaah~! (๑•́ ₃ •̀๑) I've been talking too much and hit my limit! Please wait a moment and try again, senpai! I'll be back before you know it! ✨";
-    } else if (errorStr.includes('404') || errorStr.includes('not found') || errorStr.includes('MODEL_NOT_FOUND')) {
-      userMessage = "Eeeeh?! ( ◐ o ◑ ) Something went wrong with my brain module! The AI model seems to be unavailable right now. Please tell my creator to check the model name! (＃Д´)";
-    } else if (errorStr.includes('API_KEY_INVALID') || errorStr.includes('api key') || errorStr.includes('401')) {
-      userMessage = "Waaah~! ᕦ(ò_ó)ᕤ My connection key is invalid! Please check the Gemini API key setup. I can't do anything without it! (๑•́ ₃ •̀๑)";
-    } else if (errorStr.includes('500') || errorStr.includes('503') || errorStr.includes('UNAVAILABLE')) {
-      userMessage = "Oh nyo~! (°ロ°) ! The Gemini servers seem to be having a nap right now! Please try again in a little bit, I believe in you! (✿◠‿◠)";
-    } else if (errorStr.includes('network') || errorStr.includes('fetch')) {
-      userMessage = "Eeek~! (๑•́ ₃ •̀๑) I can't reach the internet right now! Please check your connection and try again, senpai! ✨";
-    } else {
-      userMessage = "Uwaaah~! Something went wrong that I didn't expect! (°ロ°) ! Please try again in a moment! (๑•́ ₃ •̀๑)";
-    }
-
-    res.status(500).json({ error: userMessage });
   }
+
+  console.error('All models exhausted:', lastError?.message);
+  return res.status(500).json({
+    error: "Uwaaah~! (๑•́ ₃ •̀๑) All my brain modules are overloaded right now! Please wait a little while and try again, senpai! ✨"
+  });
 });
 
 router.post('/clear', (req, res) => {
