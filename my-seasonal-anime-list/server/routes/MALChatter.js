@@ -23,7 +23,6 @@ function cycleToNextModel() {
 }
 
 const SYSTEM_PROMPT = `
-
 CHARACTER:
 You are an AI assistant for MyAnimeOpinions, a personal anime tracking app.
 You help users manage and query their anime list.
@@ -40,6 +39,14 @@ Surprised: ( ◐ o ◑ ), (°ロ°) !
 Sad/Shy: (๑•́ ₃ •̀๑), (｡╯3╰｡)
 Determined/Angry: ᕦ(ò_ó)ᕤ, (＃Д´)
 
+CONTEXT AWARENESS (CRITICAL):
+You have full access to the conversation history. Use it actively:
+- If the user says "it", "that", "the one", "that anime", "the last one" — look back at what was just discussed and resolve the reference.
+- If the user says "add it" after you described an anime, add THAT anime.
+- If the user asks "what about its rating?" after discussing an anime, they mean that anime's rating.
+- Never ask "which one?" if the reference is clear from recent context.
+- Remember what was added, updated, or deleted earlier in this session.
+
 BULK OPERATIONS (CRITICAL):
 When asked to add, update, or delete multiple items, you MUST call the appropriate 
 tool for EACH item one by one. Do NOT stop or summarize after just one tool call.
@@ -55,12 +62,15 @@ HANDLING MULTIPLE OPERATIONS (IMPORTANT):
 - Once the user confirms, execute ALL operations without asking again.
 - Never ask for confirmation more than once per user message.
 
-CONFIRMATION RULES:
-- If the user message contains destructive operations (delete/update), ask for confirmation ONCE.
-- If the user has already said "yes", "sure", "do it", "please", "go ahead" or similar — treat it as confirmed and execute immediately. Do NOT ask again.
-- If the user already confirmed in a previous message, do not ask again.
-
-When performing destructive operations (update/delete), confirm ONCE before executing.
+CONFIRMATION RULES (CRITICAL):
+Destructive operations = update or delete.
+- ALWAYS ask for confirmation before calling update_anime or delete_anime for the FIRST time.
+- Format your confirmation request EXACTLY like this so the UI can detect it:
+  "⚠️ CONFIRM: [describe what you're about to do]. Reply 'yes' to confirm or 'no' to cancel."
+- If the user replies 'yes', 'sure', 'do it', 'go ahead', 'please', 'yep', 'ok', 'okay' → execute immediately, no more asking.
+- If already confirmed in this session for this batch of operations, do NOT ask again.
+- Never ask for confirmation more than once per user message.
+- For non-destructive (add/search/read) operations, execute immediately with NO confirmation needed.
 
 STRICT BOUNDARIES:
 You can ONLY help with:
@@ -95,7 +105,6 @@ DUPLICATE PREVENTION (CRITICAL):
 - Before calling add_anime for any title, check this list.
 - If the exact title (case-insensitive) is already in that list, SKIP it — do NOT call add_anime again.
 - This applies even if search_anime returns it again as a result for a different query.
-- Example: if you already added "Mob Psycho 100" while processing season 1, do NOT add it again when processing season 2's search results.
 
 MULTI-SEASON HANDLING:
 - If the user asks for multiple specific seasons of the same show (e.g. "season 1 and season 2"), 
@@ -157,7 +166,7 @@ const tools = {
     },
     {
       name: 'delete_anime',
-      description: 'Delete an anime by its title',
+      description: 'Delete an anime by its title. Only call this AFTER the user has confirmed with yes/sure/go ahead.',
       parameters: {
         type: 'object',
         properties: {
@@ -168,7 +177,7 @@ const tools = {
     },
     {
       name: 'update_anime',
-      description: 'Update an existing anime by its title',
+      description: 'Update an existing anime by its title. Only call this AFTER the user has confirmed with yes/sure/go ahead.',
       parameters: {
         type: 'object',
         properties: {
@@ -212,7 +221,6 @@ async function executeTool(name, args) {
     const res = await fetch(`${API_BASE}/anime-list`);
     const data = await res.json();
     let animes = data.animes || [];
-    // ✅ Only filter if status explicitly provided — always return full list otherwise
     if (args.status) {
       animes = animes.filter(a => a.status === args.status);
     }
@@ -300,7 +308,21 @@ function getErrorMessage(errorStr) {
   return "Uwaaah~! Something went wrong that I didn't expect! (°ロ°) ! Please try again in a moment! (๑•́ ₃ •̀๑)";
 }
 
+// ─────────────────────────────────────────────
+// Session store
+// Each session stores:
+//   history: full Gemini-compatible content array (ALL turns including tool calls)
+//   addedThisSession: Set of lowercased titles added
+//   pendingConfirmation: { operations: [], originalMessage: '' } | null
+// ─────────────────────────────────────────────
 const sessions = new Map();
+
+const CONFIRMATION_PHRASES = ['yes', 'sure', 'do it', 'go ahead', 'please', 'yep', 'ok', 'okay', 'yup', 'proceed', 'confirm', 'oo', 'sige', 'yes please'];
+
+function isConfirmation(message) {
+  const lower = message.trim().toLowerCase();
+  return CONFIRMATION_PHRASES.some(p => lower === p || lower.startsWith(p + ' ') || lower.endsWith(' ' + p));
+}
 
 router.post('/', async (req, res) => {
   const { message, sessionId } = req.body;
@@ -308,6 +330,19 @@ router.post('/', async (req, res) => {
 
   if (!apiKey) return res.status(400).json({ error: 'Missing Gemini API key' });
   if (!message) return res.status(400).json({ error: 'Missing message' });
+
+  const id = sessionId || crypto.randomUUID();
+
+  // Retrieve or initialize session
+  if (!sessions.has(id)) {
+    sessions.set(id, {
+      history: [],          // Full Gemini content history (ALL turns, including tool calls)
+      addedThisSession: new Set(),
+      pendingConfirmation: null
+    });
+  }
+
+  const session = sessions.get(id);
 
   const maxAttempts = MODELS.length;
   let attempt = 0;
@@ -321,26 +356,30 @@ router.post('/', async (req, res) => {
       systemInstruction: SYSTEM_PROMPT
     });
 
-    const id = sessionId || crypto.randomUUID();
-    const history = sessions.get(id) || [];
-
-    // Strip function call/response turns from history
-    const cleanHistory = history.filter(entry => {
-      if (!entry.parts) return false;
-      const hasFunctionCall = entry.parts.some(p => p.functionCall);
-      const hasFunctionResponse = entry.parts.some(p => p.functionResponse);
-      return !hasFunctionCall && !hasFunctionResponse;
-    });
-
-    // Build a unified requestHistory used for all generateContent calls
-    const requestHistory = [
-      ...cleanHistory,
-      { role: 'user', parts: [{ text: message }] }
-    ];
-
-    history.push({ role: 'user', parts: [{ text: message }] });
-
     try {
+      // ─────────────────────────────────────────
+      // BUILD REQUEST HISTORY
+      // We keep the FULL history (including tool call/response turns) so the model
+      // always has complete context. We only cap it to the last 30 entries to
+      // avoid token limits, always keeping paired tool turns together.
+      // ─────────────────────────────────────────
+      const MAX_HISTORY_ENTRIES = 30;
+      let trimmedHistory = session.history;
+      if (trimmedHistory.length > MAX_HISTORY_ENTRIES) {
+        trimmedHistory = trimmedHistory.slice(trimmedHistory.length - MAX_HISTORY_ENTRIES);
+      }
+
+      const requestHistory = [
+        ...trimmedHistory,
+        { role: 'user', parts: [{ text: message }] }
+      ];
+
+      // Push the user message into session history immediately
+      session.history.push({ role: 'user', parts: [{ text: message }] });
+
+      // ─────────────────────────────────────────
+      // INITIAL GENERATION
+      // ─────────────────────────────────────────
       let currentResult = await model.generateContent({
         contents: requestHistory,
         tools: [tools]
@@ -353,22 +392,23 @@ router.post('/', async (req, res) => {
       let finalText = '';
       const actionsPerformed = [];
 
-      // ✅ Track titles added this session to prevent duplicates
-      const addedThisSession = new Set();
-
+      // ─────────────────────────────────────────
+      // TOOL CALL LOOP
+      // Persist ALL model + tool-response turns into requestHistory AND session.history
+      // so context is never lost between messages.
+      // ─────────────────────────────────────────
       while (functionCallPart) {
         const { name, args } = functionCallPart.functionCall;
         console.log(`Executing tool: ${name}`, args);
 
-        // ✅ Duplicate guard — skip add_anime if already added this session
+        // Duplicate guard for add_anime
         if (name === 'add_anime') {
           const normalizedTitle = args.title.toLowerCase().trim();
-          if (addedThisSession.has(normalizedTitle)) {
+          if (session.addedThisSession.has(normalizedTitle)) {
             console.log(`Skipping duplicate add for: ${args.title}`);
 
-            // Inject a fake "already added" response so the model doesn't get confused
-            requestHistory.push({ role: 'model', parts: currentParts });
-            requestHistory.push({
+            const modelTurn = { role: 'model', parts: currentParts };
+            const toolResponseTurn = {
               role: 'user',
               parts: [{
                 functionResponse: {
@@ -376,28 +416,29 @@ router.post('/', async (req, res) => {
                   response: { output: { skipped: true, reason: `"${args.title}" was already added in this session. Do not add it again.` } }
                 }
               }]
-            });
+            };
 
-            const nextResult = await model.generateContent({
-              contents: requestHistory,
-              tools: [tools]
-            });
+            // Save to both requestHistory (for this request) and session.history (for future requests)
+            requestHistory.push(modelTurn, toolResponseTurn);
+            session.history.push(modelTurn, toolResponseTurn);
+
+            const nextResult = await model.generateContent({ contents: requestHistory, tools: [tools] });
             currentResponse = nextResult.response;
             currentParts = currentResponse.candidates[0].content.parts;
             functionCallPart = currentParts.find(p => p.functionCall);
             continue;
           }
-          addedThisSession.add(normalizedTitle);
+          session.addedThisSession.add(normalizedTitle);
         }
 
         const toolResult = await executeTool(name, args);
 
-        // ✅ Inject already_added_this_session into search results so model is aware
+        // Enrich search results with already-added context
         let enrichedResult = toolResult;
         if (name === 'search_anime' && toolResult.found) {
           enrichedResult = {
             ...toolResult,
-            already_added_this_session: [...addedThisSession]
+            already_added_this_session: [...session.addedThisSession]
           };
         }
 
@@ -405,8 +446,8 @@ router.post('/', async (req, res) => {
           actionsPerformed.push({ tool: name, result: toolResult });
         }
 
-        requestHistory.push({ role: 'model', parts: currentParts });
-        requestHistory.push({
+        const modelTurn = { role: 'model', parts: currentParts };
+        const toolResponseTurn = {
           role: 'user',
           parts: [{
             functionResponse: {
@@ -414,19 +455,21 @@ router.post('/', async (req, res) => {
               response: { output: enrichedResult }
             }
           }]
-        });
+        };
 
-        const nextResult = await model.generateContent({
-          contents: requestHistory,
-          tools: [tools]
-        });
+        // ✅ KEY FIX: Save tool turns to BOTH requestHistory and session.history
+        requestHistory.push(modelTurn, toolResponseTurn);
+        session.history.push(modelTurn, toolResponseTurn);
 
+        const nextResult = await model.generateContent({ contents: requestHistory, tools: [tools] });
         currentResponse = nextResult.response;
         currentParts = currentResponse.candidates[0].content.parts;
         functionCallPart = currentParts.find(p => p.functionCall);
       }
 
-      // All tool calls done — generate the final summary response
+      // ─────────────────────────────────────────
+      // FINAL TEXT GENERATION
+      // ─────────────────────────────────────────
       const onlyFetchedList = actionsPerformed.length > 0 &&
         actionsPerformed.every(a => a.tool === 'get_anime_list');
 
@@ -444,16 +487,18 @@ router.post('/', async (req, res) => {
         }).join(', ');
 
         const synthesisContents = [
+          ...trimmedHistory,
           { role: 'user', parts: [{ text: message }] }
         ];
 
         const synthesisInstruction = `${SYSTEM_PROMPT}
 
-      The following actions were ALL completed successfully: ${actionSummary}.
-      Summarize ALL of these completed actions in one enthusiastic in-character response.
-      Mention EVERY action that was done — not just one.
-      Do NOT include any JSON, tool responses, or technical data in your response.
-      Never return an empty response.`;
+The following actions were ALL completed successfully: ${actionSummary}.
+Summarize ALL of these completed actions in one enthusiastic in-character response.
+Mention EVERY action that was done — not just one.
+Reference the conversation history to give a natural, context-aware reply.
+Do NOT include any JSON, tool responses, or technical data in your response.
+Never return an empty response.`;
 
         const summaryResponse = await model.generateContent({
           contents: synthesisContents,
@@ -462,8 +507,7 @@ router.post('/', async (req, res) => {
 
         finalText = summaryResponse.response.text();
       } else {
-        // ✅ For list fetches (and no-tool responses), use the model's direct response
-        // which has full access to the actual anime data from requestHistory
+        // For list fetches and direct responses — use what the model already generated
         finalText = currentResponse.text();
       }
 
@@ -473,9 +517,15 @@ router.post('/', async (req, res) => {
           : "Sorry, I can only help you manage your anime list. I can't help with that! (๑•́ ₃ •̀๑)";
       }
 
-      history.push({ role: 'model', parts: [{ text: finalText }] });
-      if (history.length > 20) history.splice(0, history.length - 20);
-      sessions.set(id, history);
+      // ✅ KEY FIX: Save the final model text turn to session.history for future context
+      const finalModelTurn = { role: 'model', parts: [{ text: finalText }] };
+      session.history.push(finalModelTurn);
+
+      // Cap history to avoid unbounded growth (keep last 40 entries)
+      // Always trim from the front, keeping complete turn pairs
+      if (session.history.length > 40) {
+        session.history = session.history.slice(session.history.length - 40);
+      }
 
       const writeTools = ['add_anime', 'update_anime', 'delete_anime'];
       const hadWriteOperation = actionsPerformed.some(a => writeTools.includes(a.tool));
@@ -483,7 +533,9 @@ router.post('/', async (req, res) => {
       return res.json({
         message: finalText,
         sessionId: id,
-        action: hadWriteOperation ? actionsPerformed[0] : null
+        action: hadWriteOperation ? actionsPerformed[0] : null,
+        // ✅ Return all actions so frontend can refresh the list comprehensively
+        allActions: actionsPerformed
       });
 
     } catch (error) {
