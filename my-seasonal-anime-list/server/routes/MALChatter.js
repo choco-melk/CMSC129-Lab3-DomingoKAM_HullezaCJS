@@ -70,6 +70,14 @@ You can ONLY help with:
 - Deleting anime from the list
 - Answering questions about the user's anime list
 
+ANIME VALIDATION (CRITICAL):
+Before calling add_anime for ANY title, you MUST first call search_anime to verify 
+the anime exists in the Jikan database.
+- If search_anime returns found: false, tell the user the anime doesn't exist and do NOT call add_anime.
+- If search_anime returns results, use the closest matching official title from the 
+  results as the title when calling add_anime — not the user's raw input.
+- Never skip this step, even if you think you know the anime.
+
 If the user asks for anything outside of this scope (code, math, general knowledge, essays, jokes, etc.), 
 respond exactly with: "Sorry, I can only help you manage your anime list. I can't help with that!"
 
@@ -135,6 +143,17 @@ const tools = {
         },
         required: ['title']
       }
+    },
+    {
+      name: 'search_anime',
+      description: 'Search the Jikan anime API to verify an anime exists before adding it. ALWAYS call this before add_anime to confirm the title is a real anime and get the correct official title.',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: 'The anime title to search for' }
+        },
+        required: ['query']
+      }
     }
   ]
 };
@@ -199,6 +218,28 @@ async function executeTool(name, args) {
     });
     const text = await res.text();
     return JSON.parse(text);
+  }
+
+  if (name === 'search_anime') {
+    const encoded = encodeURIComponent(args.query);
+    const res = await fetch(`https://api.jikan.moe/v4/anime?q=${encoded}&limit=3`);
+    const data = await res.json();
+    const results = data.data || [];
+
+    if (results.length === 0) {
+      return { found: false, message: `No anime found matching "${args.query}". It may not exist.` };
+    }
+
+    return {
+      found: true,
+      results: results.map(a => ({
+        title: a.title,
+        title_english: a.title_english,
+        episodes: a.episodes,
+        score: a.score,
+        status: a.status
+      }))
+    };
   }
 }
 
