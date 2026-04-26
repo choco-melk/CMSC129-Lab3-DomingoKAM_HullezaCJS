@@ -41,9 +41,10 @@ Perform full CRUD operations through conversation:
 
 ## AI Service Used
 
-**Google Gemini API** — `gemini-2.0-flash` model  
+**Google Gemini API** — `gemini-2.5-flash`, `gemini-2.5-flash-lite`, `gemini-2.5-pro`, `gemini-3-flash-preview` model  
 Uses Gemini's function calling feature for a two-step process:
 1. First call — Gemini decides which tool to use based on user message
+    - If a model has used up all of its queries it will change to a new one, and will tell the user when all of of it has been exhausted.
 2. Second call — Gemini synthesizes a natural language response from the tool result
 
 ---
@@ -188,6 +189,7 @@ npm run dev
 ---
 
 ## How the AI Works
+## How the AI Works
 ```
 User types message
 │
@@ -195,27 +197,38 @@ User types message
 ChatService.js → POST /api/chat
 │
 ▼
-MALChatter.js receives message
+MALChatter.js receives message + session history
 │
 ▼
-Gemini (1st call) — decides if tool needed
+Gemini (1st call) — decides if tool(s) needed
 │
-┌──┴──┐
-│     │
-Tool   No tool
-call    │
-│    └→ Return text response directly
-▼
+┌──────────┴──────────┐
+│                     │
+Tool call             No tool
+│                     │
+▼                     └→ Return text response directly
 executeTool() → calls existing /api routes
 │
 ▼
-Gemini (2nd call) — synthesizes natural response
+Gemini (2nd call) — did it return another tool call?
 │
-▼
-Response sent back to frontend
-│
-▼
-If write operation → fetchAnimeList() refreshes table
+┌──────┴──────┐
+│             │
+Yes           No (text response)
+│             │
+▼             ▼
+Loop back     All tools done
+(repeat for   │
+each item     ▼
+in bulk)      Gemini (final call) — synthesizes
+              one natural response summarizing
+              ALL completed actions
+              │
+              ▼
+              Response sent back to frontend
+              │
+              ▼
+              If write operation → fetchAnimeList() refreshes table
 ```
 
 ---
