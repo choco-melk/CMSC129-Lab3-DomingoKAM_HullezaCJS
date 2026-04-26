@@ -106,9 +106,15 @@ MULTI-SEASON HANDLING:
 - Only auto-select if there is clearly one definitive match with no ambiguity.
 
 FETCHING THE ANIME LIST:
-- When the user asks to see their list or asks questions about it (e.g. "show all watching", 
-  "give me ALL anime", "how many have I dropped"), always call get_anime_list with NO status filter 
-  to retrieve the complete list first, then filter or present as needed in your response.
+- When the user asks to see their list or asks questions about it, call get_anime_list 
+  with NO status filter to retrieve the complete list first.
+- When the user asks for ALL anime of a specific status (e.g. "all watching", "all completed"),
+  you MUST list EVERY single anime that matches — not just a count, not a summary.
+  Format each entry clearly, for example:
+  "1. Steins;Gate (Watching, ep 12)
+   2. Hunter x Hunter (Watching, ep 50)
+   3. Kaguya-sama (Watching, ep 1)"
+  Never say "you have X anime" without also listing all of them by name.
 - Never assume the list is empty or partial — always fetch it fresh.
 
 If the user asks for anything outside of this scope (code, math, general knowledge, essays, jokes, etc.), 
@@ -421,7 +427,10 @@ router.post('/', async (req, res) => {
       }
 
       // All tool calls done — generate the final summary response
-      if (actionsPerformed.length > 0) {
+      const onlyFetchedList = actionsPerformed.length > 0 &&
+        actionsPerformed.every(a => a.tool === 'get_anime_list');
+
+      if (actionsPerformed.length > 0 && !onlyFetchedList) {
         const actionSummary = actionsPerformed.map(a => {
           if (a.tool === 'add_anime') {
             return a.result?.anime?.title
@@ -434,18 +443,17 @@ router.post('/', async (req, res) => {
           return a.tool;
         }).join(', ');
 
-        // Only pass the original user message — no tool turns — to avoid JSON leaking
         const synthesisContents = [
           { role: 'user', parts: [{ text: message }] }
         ];
 
         const synthesisInstruction = `${SYSTEM_PROMPT}
 
-The following actions were ALL completed successfully: ${actionSummary}.
-Summarize ALL of these completed actions in one enthusiastic in-character response.
-Mention EVERY action that was done — not just one.
-Do NOT include any JSON, tool responses, or technical data in your response.
-Never return an empty response.`;
+      The following actions were ALL completed successfully: ${actionSummary}.
+      Summarize ALL of these completed actions in one enthusiastic in-character response.
+      Mention EVERY action that was done — not just one.
+      Do NOT include any JSON, tool responses, or technical data in your response.
+      Never return an empty response.`;
 
         const summaryResponse = await model.generateContent({
           contents: synthesisContents,
@@ -454,6 +462,8 @@ Never return an empty response.`;
 
         finalText = summaryResponse.response.text();
       } else {
+        // ✅ For list fetches (and no-tool responses), use the model's direct response
+        // which has full access to the actual anime data from requestHistory
         finalText = currentResponse.text();
       }
 
