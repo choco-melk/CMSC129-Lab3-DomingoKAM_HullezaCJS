@@ -263,6 +263,10 @@ in bulk)      Gemini (final call) — synthesizes
 **Out of scope:**
 > User: "Write me a Python loop"  
 > Bot: "Sorry, I can only help you manage your anime list. I can't help with that!"
+> 
+<img alt="Screenshot 2026-04-26 231556" src="https://github.com/user-attachments/assets/1bfd315f-9950-40c5-8b34-5a1fb75b16ec" width="45%" /> <img src="https://github.com/user-attachments/assets/362c4bd2-e4d1-4586-a539-2359f894a216" width="45%" />
+
+
 
 ## License and Credits
 
