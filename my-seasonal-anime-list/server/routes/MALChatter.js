@@ -89,13 +89,27 @@ The search results include multiple name fields: title, title_english, title_jap
   - Add all valid ones first, one by one.
   - At the end, clearly list which ones were added and which ones were rejected.
 - Never skip search_anime, even if you think you know the anime.
-- If the search results return multiple seasons/parts of the same series 
-  (e.g. "1st Season", "2nd Season", "The Final"), do NOT silently pick just one.
-  Instead, ask the user: 
-  "Eeeeh? ( ◐ o ◑ ) I found multiple seasons for [title]! Which one did you mean?
-   Here are the options: [list them]. Or did you want me to add all of them? ✨"
-  Wait for the user's answer before calling add_anime.
+
+DUPLICATE PREVENTION (CRITICAL):
+- You will be given an "already_added_this_session" list at the start of tool responses.
+- Before calling add_anime for any title, check this list.
+- If the exact title (case-insensitive) is already in that list, SKIP it — do NOT call add_anime again.
+- This applies even if search_anime returns it again as a result for a different query.
+- Example: if you already added "Mob Psycho 100" while processing season 1, do NOT add it again when processing season 2's search results.
+
+MULTI-SEASON HANDLING:
+- If the user asks for multiple specific seasons of the same show (e.g. "season 1 and season 2"), 
+  call search_anime ONCE per season with a specific query (e.g. "Mob Psycho 100 season 1", "Mob Psycho 100 season 2").
+  Pick the best matching result for EACH query independently.
+- If the search results return multiple seasons/parts of the same series and the user did NOT 
+  specify which season, ask the user which one(s) they want before calling add_anime.
 - Only auto-select if there is clearly one definitive match with no ambiguity.
+
+FETCHING THE ANIME LIST:
+- When the user asks to see their list or asks questions about it (e.g. "show all watching", 
+  "give me ALL anime", "how many have I dropped"), always call get_anime_list with NO status filter 
+  to retrieve the complete list first, then filter or present as needed in your response.
+- Never assume the list is empty or partial — always fetch it fresh.
 
 If the user asks for anything outside of this scope (code, math, general knowledge, essays, jokes, etc.), 
 respond exactly with: "Sorry, I can only help you manage your anime list. I can't help with that!"
@@ -107,20 +121,20 @@ const tools = {
   functionDeclarations: [
     {
       name: 'get_anime_list',
-      description: 'Get the full anime list, optionally filtered by status',
+      description: 'Get the FULL anime list. Always fetches everything — filtering by status is done in your response, not here. Only pass status if the user explicitly asks for ONLY that status and nothing else.',
       parameters: {
         type: 'object',
         properties: {
           status: {
             type: 'string',
-            description: 'Filter by status: Watching, Completed, Dropped. Leave empty for all.'
+            description: 'Optional filter by status: Watching, Completed, Dropped. Omit to get ALL anime.'
           }
         }
       }
     },
     {
       name: 'add_anime',
-      description: 'Add a new anime to the list',
+      description: 'Add a new anime to the list. Only call this after search_anime confirms the title exists and it has not already been added this session.',
       parameters: {
         type: 'object',
         properties: {
@@ -165,11 +179,11 @@ const tools = {
     },
     {
       name: 'search_anime',
-      description: 'Search the Jikan anime API to verify an anime exists before adding it. ALWAYS call this before add_anime to confirm the title is a real anime and get the correct official title.',
+      description: 'Search the Jikan anime API to verify an anime exists before adding it. ALWAYS call this before add_anime. For multiple seasons, call this separately for each season with a specific query.',
       parameters: {
         type: 'object',
         properties: {
-          query: { type: 'string', description: 'The anime title to search for' }
+          query: { type: 'string', description: 'The anime title to search for. Be specific — include season number if relevant (e.g. "Mob Psycho 100 II" for season 2).' }
         },
         required: ['query']
       }
@@ -192,10 +206,11 @@ async function executeTool(name, args) {
     const res = await fetch(`${API_BASE}/anime-list`);
     const data = await res.json();
     let animes = data.animes || [];
+    // ✅ Only filter if status explicitly provided — always return full list otherwise
     if (args.status) {
       animes = animes.filter(a => a.status === args.status);
     }
-    return animes;
+    return { total: animes.length, animes };
   }
 
   if (name === 'add_anime') {
@@ -252,10 +267,10 @@ async function executeTool(name, args) {
     return {
       found: true,
       results: results.map(a => ({
-        title: a.title,                           
-        title_english: a.title_english,          
-        title_japanese: a.title_japanese,        
-        synonyms: a.title_synonyms || [],        
+        title: a.title,
+        title_english: a.title_english,
+        title_japanese: a.title_japanese,
+        synonyms: a.title_synonyms || [],
         episodes: a.episodes,
         score: a.score,
         status: a.status
@@ -303,8 +318,7 @@ router.post('/', async (req, res) => {
     const id = sessionId || crypto.randomUUID();
     const history = sessions.get(id) || [];
 
-    // Strip function call/response turns from history for context
-    // (these confuse the model when replayed raw)
+    // Strip function call/response turns from history
     const cleanHistory = history.filter(entry => {
       if (!entry.parts) return false;
       const hasFunctionCall = entry.parts.some(p => p.functionCall);
@@ -321,8 +335,6 @@ router.post('/', async (req, res) => {
     history.push({ role: 'user', parts: [{ text: message }] });
 
     try {
-      // ✅ Use generateContent directly from the start (no chat.sendMessage)
-      // This keeps requestHistory as the single source of truth for the whole loop
       let currentResult = await model.generateContent({
         contents: requestHistory,
         tools: [tools]
@@ -335,33 +347,69 @@ router.post('/', async (req, res) => {
       let finalText = '';
       const actionsPerformed = [];
 
-      // ✅ Keep looping as long as the model wants to call a tool
-      // This is what allows bulk operations to work — each tool result
-      // is appended and the model is asked to continue until it stops
-      // returning function calls.
+      // ✅ Track titles added this session to prevent duplicates
+      const addedThisSession = new Set();
+
       while (functionCallPart) {
         const { name, args } = functionCallPart.functionCall;
         console.log(`Executing tool: ${name}`, args);
 
+        // ✅ Duplicate guard — skip add_anime if already added this session
+        if (name === 'add_anime') {
+          const normalizedTitle = args.title.toLowerCase().trim();
+          if (addedThisSession.has(normalizedTitle)) {
+            console.log(`Skipping duplicate add for: ${args.title}`);
+
+            // Inject a fake "already added" response so the model doesn't get confused
+            requestHistory.push({ role: 'model', parts: currentParts });
+            requestHistory.push({
+              role: 'user',
+              parts: [{
+                functionResponse: {
+                  name,
+                  response: { output: { skipped: true, reason: `"${args.title}" was already added in this session. Do not add it again.` } }
+                }
+              }]
+            });
+
+            const nextResult = await model.generateContent({
+              contents: requestHistory,
+              tools: [tools]
+            });
+            currentResponse = nextResult.response;
+            currentParts = currentResponse.candidates[0].content.parts;
+            functionCallPart = currentParts.find(p => p.functionCall);
+            continue;
+          }
+          addedThisSession.add(normalizedTitle);
+        }
+
         const toolResult = await executeTool(name, args);
+
+        // ✅ Inject already_added_this_session into search results so model is aware
+        let enrichedResult = toolResult;
+        if (name === 'search_anime' && toolResult.found) {
+          enrichedResult = {
+            ...toolResult,
+            already_added_this_session: [...addedThisSession]
+          };
+        }
+
         if (name !== 'search_anime') {
           actionsPerformed.push({ tool: name, result: toolResult });
         }
 
-        // Append model's function call turn and the tool result to history
         requestHistory.push({ role: 'model', parts: currentParts });
         requestHistory.push({
           role: 'user',
           parts: [{
             functionResponse: {
               name,
-              response: { output: toolResult }
+              response: { output: enrichedResult }
             }
           }]
         });
 
-        // Ask the model to continue — it will either call another tool
-        // (next item in a bulk request) or return a final text response
         const nextResult = await model.generateContent({
           contents: requestHistory,
           tools: [tools]
@@ -369,11 +417,10 @@ router.post('/', async (req, res) => {
 
         currentResponse = nextResult.response;
         currentParts = currentResponse.candidates[0].content.parts;
-        // Check if model wants to call another tool
         functionCallPart = currentParts.find(p => p.functionCall);
       }
 
-      // All tool calls done — now generate the final summary response
+      // All tool calls done — generate the final summary response
       if (actionsPerformed.length > 0) {
         const actionSummary = actionsPerformed.map(a => {
           if (a.tool === 'add_anime') {
@@ -387,19 +434,18 @@ router.post('/', async (req, res) => {
           return a.tool;
         }).join(', ');
 
-        // ✅ Only pass the original user message — no tool turns
-        // This prevents the model from regurgitating raw JSON in its response
+        // Only pass the original user message — no tool turns — to avoid JSON leaking
         const synthesisContents = [
           { role: 'user', parts: [{ text: message }] }
         ];
 
         const synthesisInstruction = `${SYSTEM_PROMPT}
 
-      The following actions were ALL completed successfully: ${actionSummary}.
-      Summarize ALL of these completed actions in one enthusiastic in-character response.
-      Mention EVERY action that was done — not just one.
-      Do NOT include any JSON, tool responses, or technical data in your response.
-      Never return an empty response.`;
+The following actions were ALL completed successfully: ${actionSummary}.
+Summarize ALL of these completed actions in one enthusiastic in-character response.
+Mention EVERY action that was done — not just one.
+Do NOT include any JSON, tool responses, or technical data in your response.
+Never return an empty response.`;
 
         const summaryResponse = await model.generateContent({
           contents: synthesisContents,
