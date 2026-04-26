@@ -6,10 +6,7 @@ let sessionId = null;
 export async function sendMessage(message) {
   const res = await fetch(`${API_BASE}/chat`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-gemini-key': GEMINI_KEY
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ message, sessionId })
   });
   const data = await res.json();
