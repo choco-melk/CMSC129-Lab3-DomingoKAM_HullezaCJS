@@ -89,6 +89,13 @@ The search results include multiple name fields: title, title_english, title_jap
   - Add all valid ones first, one by one.
   - At the end, clearly list which ones were added and which ones were rejected.
 - Never skip search_anime, even if you think you know the anime.
+- If the search results return multiple seasons/parts of the same series 
+  (e.g. "1st Season", "2nd Season", "The Final"), do NOT silently pick just one.
+  Instead, ask the user: 
+  "Eeeeh? ( ◐ o ◑ ) I found multiple seasons for [title]! Which one did you mean?
+   Here are the options: [list them]. Or did you want me to add all of them? ✨"
+  Wait for the user's answer before calling add_anime.
+- Only auto-select if there is clearly one definitive match with no ambiguity.
 
 If the user asks for anything outside of this scope (code, math, general knowledge, essays, jokes, etc.), 
 respond exactly with: "Sorry, I can only help you manage your anime list. I can't help with that!"
@@ -372,7 +379,7 @@ router.post('/', async (req, res) => {
           if (a.tool === 'add_anime') {
             return a.result?.anime?.title
               ? `Added "${a.result.anime.title}"`
-              : `Failed to add "${a.result?.message || 'unknown'}"`;
+              : `Failed to add: "${a.result?.message || 'unknown'}"`;
           }
           if (a.tool === 'update_anime') return `Updated "${a.result?.anime?.title || 'anime'}"`;
           if (a.tool === 'delete_anime') return `Deleted "${a.result?.anime?.title || 'anime'}"`;
@@ -380,15 +387,22 @@ router.post('/', async (req, res) => {
           return a.tool;
         }).join(', ');
 
+        // ✅ Only pass the original user message — no tool turns
+        // This prevents the model from regurgitating raw JSON in its response
+        const synthesisContents = [
+          { role: 'user', parts: [{ text: message }] }
+        ];
+
         const synthesisInstruction = `${SYSTEM_PROMPT}
 
-The following actions were ALL completed successfully: ${actionSummary}.
-Summarize ALL of these completed actions in one enthusiastic in-character response.
-Mention EVERY action that was done — not just one.
-Never return an empty response.`;
+      The following actions were ALL completed successfully: ${actionSummary}.
+      Summarize ALL of these completed actions in one enthusiastic in-character response.
+      Mention EVERY action that was done — not just one.
+      Do NOT include any JSON, tool responses, or technical data in your response.
+      Never return an empty response.`;
 
         const summaryResponse = await model.generateContent({
-          contents: requestHistory,
+          contents: synthesisContents,
           systemInstruction: { parts: [{ text: synthesisInstruction }] }
         });
 
