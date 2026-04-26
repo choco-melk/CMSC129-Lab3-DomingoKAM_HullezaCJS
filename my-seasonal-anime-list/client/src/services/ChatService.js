@@ -9,7 +9,14 @@ export async function sendMessage(message) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ message, sessionId })
   });
+
   const data = await res.json();
+  
+  if (!res.ok) {
+    // ✅ throw the backend's error message so AnimeBot can display it
+    throw new Error(data.error || 'Something went wrong');
+  }
+
   sessionId = data.sessionId;
   return data;
 }

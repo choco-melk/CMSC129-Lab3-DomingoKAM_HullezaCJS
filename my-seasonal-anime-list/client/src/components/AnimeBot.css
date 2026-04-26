@@ -21,7 +21,8 @@
     height: 56px;
     border-radius: 50%;
     border: 2px solid rgb(46, 81, 162);
-    background-color: rgb(18, 18, 18);
+    background-color: rgb(46, 81, 162);
+    color: white;
     cursor: pointer;
     display: flex;
     align-items: center;

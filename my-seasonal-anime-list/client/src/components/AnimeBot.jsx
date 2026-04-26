@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { sendMessage, clearChat } from './services/ChatService';
+import { sendMessage, clearChat } from '../services/ChatService';
 import './AnimeBot.css';
 
 // ─── MASCOT CONFIG ───────────────────────────────────────────────
@@ -26,7 +26,7 @@ function AssistantAvatar() {
 function AnimeBot({ onListUpdate }) {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState([
-    { role: 'assistant', content: "Hi! I can help you manage your anime list. Ask me anything!" }
+    { role: 'assistant', content: "Yahhoo~! ✨ I'm your anime bestie here to help with MyAnimeOpinions! (ﾉ◕ヮ◕)ﾉ*:･ﾟ✧ Whether you want to add, update, delete, or just peek at your list — I've got you, senpai! Waku waku! (≧◡≦)" }
   ]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -54,8 +54,9 @@ function AnimeBot({ onListUpdate }) {
       if (action && ['add_anime', 'update_anime', 'delete_anime'].includes(action.tool)) {
         if (onListUpdate) onListUpdate();
       }
-    } catch {
-      addMessage('assistant', "Sorry, something went wrong. Please try again.");
+    } catch (error) {
+      // ✅ show the character error message from backend if available
+      addMessage('assistant', error.message || "Uwaaah~! Something went wrong! (๑•́ ₃ •̀๑) Please try again!");
     } finally {
       setIsLoading(false);
     }
